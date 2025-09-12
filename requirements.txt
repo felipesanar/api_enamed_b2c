@@ -1,4 +1,5 @@
-Flask
-pandas
-flask-swagger-ui
-gunicorn
+Flask==3.1.2
+pandas==2.3.2
+gunicorn==23.0.0
+flask_swagger_ui==5.21.0
+openpyxl==3.1.5
