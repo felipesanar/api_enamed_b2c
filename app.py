@@ -15,7 +15,7 @@ API_URL = '/static/swagger.json'
 swaggerui_blueprint = get_swaggerui_blueprint(
     SWAGGER_URL,
     API_URL,
-    config={'app_name': "API Cronograma ENAMED B2C"}
+    config={'app_name': "API Cronograma de Estudos (Nova Estrutura)"}
 )
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
@@ -60,9 +60,9 @@ def extrair_tema_subtema(tema_completo_str):
 
 # --- Funções de Processamento de Dados ---
 
-def processar_arquivos_para_hierarquia(pasta_arquivos):
+def processar_arquivos_para_hierarquia():
     """
-    Processa arquivos e constrói uma estrutura hierárquica usando dicionários,
+    Processa arquivos na raiz do projeto e constrói uma estrutura hierárquica usando dicionários,
     onde cada semana é uma chave única.
     """
     dados_brutos = defaultdict(lambda: {
@@ -81,15 +81,12 @@ def processar_arquivos_para_hierarquia(pasta_arquivos):
             })
         })
     })
-    
-    # Criar a pasta se ela não existir
-    if not os.path.exists(pasta_arquivos):
-        os.makedirs(pasta_arquivos)
 
-    arquivos = glob.glob(os.path.join(pasta_arquivos, '*.xlsx')) + glob.glob(os.path.join(pasta_arquivos, '*.csv'))
+    # Busca arquivos .xlsx e .csv diretamente na raiz do projeto
+    arquivos = glob.glob('*.xlsx') + glob.glob('*.csv')
     
     if not arquivos:
-        print(f"Nenhum arquivo .xlsx ou .csv encontrado na pasta '{pasta_arquivos}'.")
+        print("Nenhum arquivo .xlsx ou .csv encontrado na raiz do projeto.")
         return {}
     else:
         print(f"Arquivos encontrados: {arquivos}")
@@ -297,14 +294,8 @@ def swagger_spec():
 
 # --- Inicialização ---
 if __name__ == '__main__':
-    pasta_dados = 'dados_cronograma'
-    
-    # Este trecho foi movido para o processamento de dados, pois o
-    # Render não consegue criar a pasta em tempo de execução.
-    # O Gunicorn precisa que a pasta já exista antes de iniciar.
-    
     print("Processando arquivos do cronograma...")
-    cronograma_final = processar_arquivos_para_hierarquia(pasta_dados)
+    cronograma_final = processar_arquivos_para_hierarquia()
     
     if cronograma_final.get("cronograma"):
         num_semanas = len(cronograma_final.get("cronograma", {}))
