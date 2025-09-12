@@ -15,7 +15,7 @@ API_URL = '/static/swagger.json'
 swaggerui_blueprint = get_swaggerui_blueprint(
     SWAGGER_URL,
     API_URL,
-    config={'app_name': "API Cronograma de Estudos (Nova Estrutura)"}
+    config={'app_name': "API Cronograma ENAMED B2C"}
 )
 app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
@@ -81,17 +81,25 @@ def processar_arquivos_para_hierarquia(pasta_arquivos):
             })
         })
     })
+    
+    # Criar a pasta se ela não existir
+    if not os.path.exists(pasta_arquivos):
+        os.makedirs(pasta_arquivos)
 
     arquivos = glob.glob(os.path.join(pasta_arquivos, '*.xlsx')) + glob.glob(os.path.join(pasta_arquivos, '*.csv'))
     
     if not arquivos:
         print(f"Nenhum arquivo .xlsx ou .csv encontrado na pasta '{pasta_arquivos}'.")
         return {}
+    else:
+        print(f"Arquivos encontrados: {arquivos}")
 
     for arquivo in arquivos:
         try:
             df = pd.read_excel(arquivo) if arquivo.endswith('.xlsx') else pd.read_csv(arquivo)
             df = df.astype(str).fillna('')
+            print(f"Arquivo '{os.path.basename(arquivo)}' lido com sucesso. Primeiras 5 linhas:")
+            print(df.head().to_string())
 
             for _, row in df.iterrows():
                 semana_str = row.get('Semana', '').strip()
@@ -111,8 +119,14 @@ def processar_arquivos_para_hierarquia(pasta_arquivos):
                 semana_obj = dados_brutos[chave_semana]
                 semana_obj["nome_exibicao"] = semana_str
                 semana_obj["numero"] = int(re.findall(r'\d+', semana_str)[0])
-                semana_obj["periodo"] = extrair_periodo(semana_str)
-                semana_obj["area_conhecimento"] = extrair_area_conhecimento(semana_str)
+    
+                periodo_extraido = extrair_periodo(semana_str)
+                if periodo_extraido:
+                    semana_obj["periodo"] = periodo_extraido
+                
+                area_extraida = extrair_area_conhecimento(semana_str)
+                if area_extraida:
+                    semana_obj["area_conhecimento"] = area_extraida
 
                 dia_obj = semana_obj["dias"][dia_str]
                 dia_obj["nome"] = dia_str
@@ -133,6 +147,7 @@ def processar_arquivos_para_hierarquia(pasta_arquivos):
 
         except Exception as e:
             print(f"Erro ao processar o arquivo {arquivo}: {e}")
+            return {} # Retorna vazio se houver um erro de leitura
 
     return formatar_cronograma_final(dados_brutos)
 
@@ -284,10 +299,9 @@ def swagger_spec():
 if __name__ == '__main__':
     pasta_dados = 'dados_cronograma'
     
-    if not os.path.exists(pasta_dados):
-        os.makedirs(pasta_dados)
-        print(f"Pasta '{pasta_dados}' criada.")
-        print("Por favor, adicione seus arquivos .xlsx ou .csv nesta pasta e reinicie o servidor.")
+    # Este trecho foi movido para o processamento de dados, pois o
+    # Render não consegue criar a pasta em tempo de execução.
+    # O Gunicorn precisa que a pasta já exista antes de iniciar.
     
     print("Processando arquivos do cronograma...")
     cronograma_final = processar_arquivos_para_hierarquia(pasta_dados)
@@ -298,6 +312,7 @@ if __name__ == '__main__':
         print("API pronta para receber requisições.")
     else:
         print("Nenhum dado de cronograma foi carregado. A API retornará resultados vazios.")
+        print("Certifique-se de que a pasta 'dados_cronograma' existe e contém arquivos .xlsx ou .csv.")
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
