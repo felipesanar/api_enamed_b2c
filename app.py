@@ -94,15 +94,24 @@ def processar_arquivos_para_hierarquia():
     for arquivo in arquivos:
         try:
             df = pd.read_excel(arquivo) if arquivo.endswith('.xlsx') else pd.read_csv(arquivo)
+            
+            if df.empty:
+                print(f"Atenção: O arquivo '{os.path.basename(arquivo)}' está vazio ou não pôde ser lido corretamente.")
+                continue
+
+            # Normaliza os nomes das colunas
+            df.columns = [col.strip().lower() for col in df.columns]
+            print(f"Colunas normalizadas no arquivo '{os.path.basename(arquivo)}': {df.columns.tolist()}")
+
             df = df.astype(str).fillna('')
             print(f"Arquivo '{os.path.basename(arquivo)}' lido com sucesso. Primeiras 5 linhas:")
             print(df.head().to_string())
 
             for _, row in df.iterrows():
-                semana_str = row.get('Semana', '').strip()
-                dia_str = row.get('Dia', '').strip()
-                tema_completo_str = row.get('Tema do dia', '').strip()
-                aula_str = row.get('Aula', '').strip() # Esta coluna pode não existir na nova planilha, o que está ok.
+                semana_str = row.get('semana', '').strip()
+                dia_str = row.get('dia', '').strip()
+                tema_completo_str = row.get('tema do dia', '').strip()
+                aula_str = row.get('aula', '').strip() # Esta coluna pode não existir na nova planilha, o que está ok.
 
                 chave_semana = criar_chave_semana(semana_str)
                 
@@ -136,8 +145,8 @@ def processar_arquivos_para_hierarquia():
                 
                 aula_nova = {
                     "nome": aula_str,
-                    "link_aula": row.get('Link Aula', '').strip(),
-                    "link_gratuito": row.get('Link Gratuito', '').strip()
+                    "link_aula": row.get('link aula', '').strip(),
+                    "link_gratuito": row.get('link gratuito', '').strip()
                 }
                 if aula_nova not in subtema_obj["aulas"]:
                     subtema_obj["aulas"].append(aula_nova)
@@ -299,11 +308,13 @@ if __name__ == '__main__':
     
     if cronograma_final.get("cronograma"):
         num_semanas = len(cronograma_final.get("cronograma", {}))
-        print(f"Processamento concluído. {num_semanas} semanas carregadas.")
-        print("API pronta para receber requisições.")
+        if num_semanas > 0:
+            print(f"Processamento concluído. {num_semanas} semanas carregadas.")
+            print("API pronta para receber requisições.")
+        else:
+            print("Nenhum dado de cronograma foi carregado. O arquivo pode estar vazio ou com formato incorreto.")
     else:
-        print("Nenhum dado de cronograma foi carregado. A API retornará resultados vazios.")
-        print("Certifique-se de que a pasta 'dados_cronograma' existe e contém arquivos .xlsx ou .csv.")
+        print("Erro: A função de processamento de arquivos não retornou o dicionário esperado.")
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
