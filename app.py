@@ -302,10 +302,10 @@ def swagger_spec():
     return jsonify(spec)
 
 # --- Inicialização ---
+print("Processando arquivos do cronograma...")
+cronograma_final = processar_arquivos_para_hierarquia()
+
 if __name__ == '__main__':
-    print("Processando arquivos do cronograma...")
-    cronograma_final = processar_arquivos_para_hierarquia()
-    
     if cronograma_final.get("cronograma"):
         num_semanas = len(cronograma_final.get("cronograma", {}))
         if num_semanas > 0:
