@@ -62,25 +62,11 @@ def extrair_tema_subtema(tema_completo_str):
 
 def processar_arquivos_para_hierarquia():
     """
-    Processa arquivos na raiz do projeto e constrói uma estrutura hierárquica usando dicionários,
-    onde cada semana é uma chave única.
+    Processa arquivos na raiz do projeto e constrói uma estrutura hierárquica agrupada por
+    'area_conhecimento'.
     """
-    dados_brutos = defaultdict(lambda: {
-        "nome_exibicao": "",
-        "numero": 0,
-        "periodo": "",
-        "area_conhecimento": "",
-        "dias": defaultdict(lambda: {
-            "nome": "",
-            "temas": defaultdict(lambda: {
-                "nome": "",
-                "subtemas": defaultdict(lambda: {
-                    "nome": "",
-                    "aulas": []
-                })
-            })
-        })
-    })
+    # Usamos defaultdict para criar listas vazias automaticamente para cada nova área
+    dados_brutos = defaultdict(list)
 
     # Busca arquivos .xlsx e .csv diretamente na raiz do projeto
     arquivos = glob.glob('*.xlsx') + glob.glob('*.csv')
@@ -114,42 +100,50 @@ def processar_arquivos_para_hierarquia():
                 aula_str = row.get('aula', '').strip() # Esta coluna pode não existir na nova planilha, o que está ok.
 
                 chave_semana = criar_chave_semana(semana_str)
-                
-                # Pula a linha se não conseguir gerar uma chave para a semana ou se o dia/tema estiverem vazios
-                if not chave_semana or not dia_str or not tema_completo_str:
+                area_conhecimento_str = extrair_area_conhecimento(semana_str)
+
+                # Pula a linha se não conseguir a area, a chave da semana ou se o dia/tema estiverem vazios
+                if not area_conhecimento_str or not chave_semana or not dia_str or not tema_completo_str:
                     continue
 
                 tema_principal_str, subtema_str = extrair_tema_subtema(tema_completo_str)
                 
-                # --- Constrói a hierarquia aninhada ---
-                semana_obj = dados_brutos[chave_semana]
-                semana_obj["nome_exibicao"] = semana_str
-                semana_obj["numero"] = int(re.findall(r'\d+', semana_str)[0])
-    
-                periodo_extraido = extrair_periodo(semana_str)
-                if periodo_extraido:
-                    semana_obj["periodo"] = periodo_extraido
+                # --- Constrói a hierarquia de TEMAS e SUBTEMAS ---
+                # A lógica abaixo cria a estrutura aninhada, mas de forma separada
+                # para cada linha da planilha.
                 
-                area_extraida = extrair_area_conhecimento(semana_str)
-                if area_extraida:
-                    semana_obj["area_conhecimento"] = area_extraida
-
-                dia_obj = semana_obj["dias"][dia_str]
-                dia_obj["nome"] = dia_str
-
-                tema_obj = dia_obj["temas"][tema_principal_str]
-                tema_obj["nome"] = tema_principal_str
-
-                subtema_obj = tema_obj["subtemas"][subtema_str]
-                subtema_obj["nome"] = subtema_str
+                temas_lista = []
+                subtemas_lista = []
+                aulas_lista = []
                 
                 aula_nova = {
                     "nome": aula_str,
                     "link_aula": row.get('link aula', '').strip(),
                     "link_gratuito": row.get('link gratuito', '').strip()
                 }
-                if aula_nova not in subtema_obj["aulas"]:
-                    subtema_obj["aulas"].append(aula_nova)
+                aulas_lista.append(aula_nova)
+
+                subtema_obj = {
+                    "nome": subtema_str,
+                    "aulas": aulas_lista
+                }
+                subtemas_lista.append(subtema_obj)
+
+                tema_obj = {
+                    "nome": tema_principal_str,
+                    "subtemas": subtemas_lista
+                }
+                temas_lista.append(tema_obj)
+                
+                dia_obj = {
+                    "semana": chave_semana,
+                    "nome": dia_str,
+                    "temas": temas_lista
+                }
+                
+                # Adiciona o dia ao dicionário principal, agrupando por area_conhecimento
+                # O defaultdict 'dados_brutos' garante que a lista para a área já existe
+                dados_brutos[area_conhecimento_str].append(dia_obj)
 
         except Exception as e:
             print(f"Erro ao processar o arquivo {arquivo}: {e}")
@@ -159,31 +153,56 @@ def processar_arquivos_para_hierarquia():
 
 def formatar_cronograma_final(dados_brutos):
     """
-    Converte os dicionários aninhados em listas (para dias, temas, etc.) e
-    mantém a estrutura de dicionário para as semanas, ordenando-as por número.
+    Consolida as listas de dias para cada área e remove entradas duplicadas.
     """
     cronograma_ordenado = {}
-    # Ordena as semanas pelo número extraído para garantir a ordem correta
-    chaves_ordenadas = sorted(dados_brutos.keys(), key=lambda k: dados_brutos[k]['numero'])
+    
+    for area_conhecimento, dias_lista in dados_brutos.items():
+        # Usa um set para rastrear dias já vistos e evitar duplicatas
+        dias_processados = {} # Usamos um dicionário para consolidar temas e subtemas
+        
+        for dia in dias_lista:
+            dia_key = dia['nome']
+            if dia_key not in dias_processados:
+                dias_processados[dia_key] = {
+                    "semana": dia['semana'],
+                    "nome": dia['nome'],
+                    "temas": defaultdict(lambda: {
+                        "nome": "",
+                        "subtemas": defaultdict(lambda: {
+                            "nome": "",
+                            "aulas": []
+                        })
+                    })
+                }
 
-    for chave_semana in chaves_ordenadas:
-        semana_val = dados_brutos[chave_semana]
-        dias_lista = []
-        # Ordena os dias pelo nome (ex: "15/09", "16/09")
-        for dia_key in sorted(semana_val["dias"].keys()):
-            dia_val = semana_val["dias"][dia_key]
+            # Consolida temas e subtemas no mesmo dia
+            for tema in dia['temas']:
+                tema_key = tema['nome']
+                if tema_key not in dias_processados[dia_key]['temas']:
+                    dias_processados[dia_key]['temas'][tema_key]['nome'] = tema_key
+                
+                for subtema in tema['subtemas']:
+                    subtema_key = subtema['nome']
+                    if subtema_key not in dias_processados[dia_key]['temas'][tema_key]['subtemas']:
+                        dias_processados[dia_key]['temas'][tema_key]['subtemas'][subtema_key]['nome'] = subtema_key
+                    
+                    for aula in subtema['aulas']:
+                        if aula not in dias_processados[dia_key]['temas'][tema_key]['subtemas'][subtema_key]['aulas']:
+                             dias_processados[dia_key]['temas'][tema_key]['subtemas'][subtema_key]['aulas'].append(aula)
+
+        
+        # Converte a estrutura de volta para listas
+        dias_finais = list(dias_processados.values())
+        for dia_final in dias_finais:
             temas_lista = []
-            for tema_key in sorted(dia_val["temas"].keys()):
-                tema_val = dia_val["temas"][tema_key]
-                subtemas_lista = list(tema_val["subtemas"].values()) # Converte para lista
-                tema_val["subtemas"] = subtemas_lista
-                temas_lista.append(tema_val)
-
-            dia_val["temas"] = temas_lista
-            dias_lista.append(dia_val)
-
-        semana_val["dias"] = dias_lista
-        cronograma_ordenado[chave_semana] = semana_val
+            for tema_obj in dia_final['temas'].values():
+                subtemas_lista = list(tema_obj['subtemas'].values())
+                tema_obj['subtemas'] = subtemas_lista
+                temas_lista.append(tema_obj)
+            dia_final['temas'] = temas_lista
+            
+        cronograma_ordenado[area_conhecimento] = dias_finais
     
     return {"cronograma": cronograma_ordenado}
 
@@ -204,7 +223,7 @@ def home():
 @app.route('/api/cronograma', methods=['GET'])
 def get_cronograma_completo():
     """
-    Retorna toda a estrutura do cronograma como um dicionário de semanas.
+    Retorna toda a estrutura do cronograma como um dicionário de áreas de conhecimento.
     ---
     tags:
       - Cronograma
@@ -241,29 +260,29 @@ def buscar():
 
     resultados = []
     # Itera sobre os valores do dicionário de semanas
-    for chave_semana, semana in cronograma_final.get("cronograma", {}).items():
-        # Constrói uma string com os dados da semana para busca
-        semana_busca = f"{chave_semana} {semana['nome_exibicao']} {semana['area_conhecimento']} {semana['periodo']}".lower()
+    for area_conhecimento, dias in cronograma_final.get("cronograma", {}).items():
+        # Constrói uma string com os dados da area de conhecimento para busca
+        area_busca = area_conhecimento.lower()
 
-        if termo in semana_busca:
-             # Se o termo for encontrado na semana, adiciona todos os dias daquela semana
-             for dia in semana.get("dias", []):
+        if termo in area_busca:
+             # Se o termo for encontrado na area, adiciona todos os dias
+             for dia in dias:
                  resultados.append({
-                    "semana": chave_semana,
+                    "semana": dia['semana'],
                     "dia": dia['nome'],
-                    "area_conhecimento": semana['area_conhecimento'],
-                    "temas": [t for t in dia.get('temas', [])], # Adiciona os temas encontrados
+                    "area_conhecimento": area_conhecimento,
+                    "temas": [t for t in dia.get('temas', [])],
                     "aula_encontrada": []
                  })
              continue
         
-        for dia in semana.get("dias", []):
+        for dia in dias:
             dia_busca = f"{dia['nome']}".lower()
             if termo in dia_busca:
                 resultados.append({
-                    "semana": chave_semana,
+                    "semana": dia['semana'],
                     "dia": dia['nome'],
-                    "area_conhecimento": semana['area_conhecimento'],
+                    "area_conhecimento": area_conhecimento,
                     "temas": [t for t in dia.get('temas', [])],
                     "aula_encontrada": []
                 })
@@ -272,10 +291,11 @@ def buscar():
                 for subtema in tema.get("subtemas", []):
                     for aula in subtema.get("aulas", []):
                         # Constrói uma string de busca com todo o caminho
-                        caminho_completo = f"{semana_busca} {dia['nome']} {tema['nome']} {subtema['nome']} {aula['nome']}".lower()
+                        caminho_completo = f"{area_busca} {dia['nome']} {tema['nome']} {subtema['nome']} {aula['nome']}".lower()
                         if termo in caminho_completo:
                             resultados.append({
-                                "semana": chave_semana,
+                                "area_conhecimento": area_conhecimento,
+                                "semana": dia['semana'],
                                 "dia": dia['nome'],
                                 "tema": tema['nome'],
                                 "subtema": subtema['nome'],
@@ -307,9 +327,9 @@ cronograma_final = processar_arquivos_para_hierarquia()
 
 if __name__ == '__main__':
     if cronograma_final.get("cronograma"):
-        num_semanas = len(cronograma_final.get("cronograma", {}))
-        if num_semanas > 0:
-            print(f"Processamento concluído. {num_semanas} semanas carregadas.")
+        num_areas = len(cronograma_final.get("cronograma", {}))
+        if num_areas > 0:
+            print(f"Processamento concluído. {num_areas} áreas carregadas.")
             print("API pronta para receber requisições.")
         else:
             print("Nenhum dado de cronograma foi carregado. O arquivo pode estar vazio ou com formato incorreto.")
